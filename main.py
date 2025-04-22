@@ -30,12 +30,7 @@ y_angles = deque(maxlen=angle_buffer_size)
 
 # Speech Recognition
 recognizer = sr.Recognizer()
-try:
-    mic = sr.Microphone()
-    microphone_available = True
-except Exception:
-    print("Microphone not available, skipping speech detection.")
-    microphone_available = False
+mic = sr.Microphone()
 
 # YOLO Model
 model = YOLO("yolo-Weights/yolov8n.pt")
@@ -60,35 +55,33 @@ alert_cooldown = 5  # seconds
 # ====================== Functions ======================
 def log_event(message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(log_file, "a", encoding="utf-8") as log:
+    with open(log_file, "a", encoding="utf-8") as log:  # <-- UTF-8 encoding added here
         log.write(f"[{timestamp}] {message}\n")
     print(f"{timestamp} - {message}")
 
+
 def detect_speech():
-    if not microphone_available:
-        return
     while True:
-        try:
+        with mic as source:
+            recognizer.adjust_for_ambient_noise(source)
             print("Listening for speech...")
-            with mic as source:
-                recognizer.adjust_for_ambient_noise(source)
-                audio = recognizer.listen(source, timeout=5)
-            text = recognizer.recognize_google(audio)
-            detected_lang = langdetect.detect(text)
-            log_event(f"Speech detected: {text} (Language: {detected_lang})")
-            if detected_lang != "en":
-                log_event("WARNING: Non-English speech detected!")
-        except sr.UnknownValueError:
-            pass
-        except sr.RequestError:
-            log_event("Error with speech recognition service.")
-        except Exception as e:
-            log_event(f"Speech detection error: {str(e)}")
+            try:
+                audio = recognizer.listen(source, timeout=3)
+                text = recognizer.recognize_google(audio)
+                detected_lang = langdetect.detect(text)
+                log_event(f"Speech detected: {text} (Language: {detected_lang})")
+                if detected_lang != "en":
+                    log_event("WARNING: Non-English speech detected!")
+            except sr.UnknownValueError:
+                pass
+            except sr.RequestError:
+                log_event("Error with speech recognition service.")
+            except sr.WaitTimeoutError:
+                pass
 
 # Start speech detection thread
-if microphone_available:
-    speech_thread = threading.Thread(target=detect_speech, daemon=True)
-    speech_thread.start()
+speech_thread = threading.Thread(target=detect_speech, daemon=True)
+speech_thread.start()
 
 # ====================== Main Execution ======================
 cap = cv2.VideoCapture(0)
@@ -116,7 +109,7 @@ while cap.isOpened():
     image.flags.writeable = True
     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-    # Face Count Detection
+    # ================== Face Count Detection ==================
     face_count = 0
     if results_detection.detections:
         face_count = len(results_detection.detections)
@@ -135,7 +128,7 @@ while cap.isOpened():
     elif face_count > 0:
         face_not_detected = False
 
-    # Head Pose Estimation
+    # ================== Head Pose Estimation ==================
     if results_mesh.multi_face_landmarks:
         for face_landmarks in results_mesh.multi_face_landmarks:
             face_3d, face_2d = [], []
@@ -179,7 +172,7 @@ while cap.isOpened():
                 cv2.putText(image, "WARNING: Excessive movement detected!", (20, 100),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
-    # Phone Detection (YOLO)
+    # ================== Phone Detection (YOLO) ==================
     results = model(image, stream=True)
     phone_detected = False
 
@@ -205,7 +198,7 @@ while cap.isOpened():
             cv2.imwrite(f"alerts/phone_{timestamp}.jpg", image)
             last_alert_time = current_time
 
-    # Display
+    # ================== Display ==================
     end = time.time()
     fps = 1 / (end - start)
     cv2.putText(image, f'FPS: {int(fps)}', (20, 450), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 2)

@@ -11,6 +11,16 @@ import speech_recognition as sr
 import langdetect
 from ultralytics import YOLO
 
+
+import sounddevice as sd
+import scipy.io.wavfile as wav
+from io import BytesIO
+
+recognizer = sr.Recognizer()
+sample_rate = 16000  # Use 16000 Hz sample rate (Google's API prefers this)
+duration = 3  # seconds
+
+
 # ====================== Initialization ======================
 # MediaPipe
 mp_face_mesh = mp.solutions.face_mesh
